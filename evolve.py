@@ -1,5 +1,6 @@
-# Evolve stable diffusion prompts
+# Evolve stable diffusion prompts using language model crossover (LMX)
 # Mark Nelson, 2022-2023
+# (main GA loop adapted from Elliot Meyerson)
 
 import pandas as pd
 import numpy as np
@@ -12,7 +13,7 @@ from tqdm.auto import tqdm
 import graphviz
 import textwrap
 
-llm = "EleutherAI/gpt-neo-2.7B"
+llm = "EleutherAI/pythia-160m-deduped"
 sd_seed = 99 # make SD generate deterministically by using a fixed RNG seed
 
 # draw the initial population from a dataset of prompts from lexica.art:
@@ -66,20 +67,14 @@ def compute_fitness(image, rgb):
   # else "b"
   return np.sum(img[:,:,2]) - 0.5*np.sum(img[:,:,0]) - 0.5*np.sum(img[:,:,1])
 
-def run_experiment(fitness_fun, pop_size, max_generations, num_parents_for_crossover):
-  # main loop borrowed from Elliot's symbolic regression experiment
-
-  #pop_size = 10
-  #max_generations = 10
+def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for_crossover):
   random_candidate_prob = 0.05
-  #num_parents_for_crossover = 4
   sd_inference_steps = 10        # 50 is default, reduced for quicker iteration
-  #target_color = "r"
 
   # Initialize population
   pop = get_seed_prompts(pop_size)
   img = [sd_generate(p, sd_inference_steps) for p in pop]
-  fit = [compute_fitness(im, target_color) for im in img]
+  fit = [fitness_fun(im) for im in img]
 
   # Keep track of where all prompts seen so far came from
   # dict mapping prompt -> [parent_prompts]
@@ -114,7 +109,7 @@ def run_experiment(fitness_fun, pop_size, max_generations, num_parents_for_cross
         'mean_fitness': avg_fit_chart,
         'median_fitness': med_fit_chart
         })
-    results_df.to_csv("results.csv")
+    results_df.to_csv(f"{name}_results.csv")
 
     # Create offspring
     off_pop = []
@@ -133,7 +128,7 @@ def run_experiment(fitness_fun, pop_size, max_generations, num_parents_for_cross
 
       if (candidate not in off_pop) and (candidate not in pop):
         image = sd_generate(candidate, sd_inference_steps)
-        fitness = compute_fitness(image, target_color)
+        fitness = fitness_fun(image)
         off_pop.append(candidate)
         off_img.append(image)
         off_fit.append(fitness)
@@ -158,7 +153,7 @@ def run_experiment(fitness_fun, pop_size, max_generations, num_parents_for_cross
     fit = merged_fit
 
   best_idx = np.argmax(fit)
-  img[best_idx].save(f"best.png")
+  img[best_idx].save(f"{name}_best.png")
 
   # draw a provenance graph
   wrapwidth = 25
@@ -184,8 +179,17 @@ def run_experiment(fitness_fun, pop_size, max_generations, num_parents_for_cross
       graph.node(label(p))
 
   graph_parents(pop[best_idx])
-  graph.render("prompt_hist.pdf")
+  graph.render(f"{name}_prompthist", format="pdf")
 
-# FIXME: now call run_experiment a few times
-# FIXME: name/organize the output so multiple runs don't clobber each other
-# TODO: maybe add some cmd line arguments so it's a bit cleaner
+# experiments
+pop_size = 10
+max_generations = 10
+num_parents_for_crossover = 4
+
+for c in ("r", "g", "b"):
+  run_experiment(f"excess_{c}",
+                 lambda image: compute_fitness(image, c),
+                 pop_size,
+                 max_generations,
+                 num_parents_for_crossover)
+
