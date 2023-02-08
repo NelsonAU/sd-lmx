@@ -25,8 +25,8 @@ generator = pipeline(task="text-generation", model=llm, device=0)
 
 max_prompt_tokens = 75  # a token is roughly 4 chars; SD prompts can be up to 75-77 tokens
 
-def get_seed_prompts(n):
-  seed_prompts = initprompts.sample(n=n)['Prompt'].tolist()
+def get_seed_prompts(n, rng_seed=None):
+  seed_prompts = initprompts.sample(n=n, random_state=rng_seed)['Prompt'].tolist()
   return [p[:max_prompt_tokens*4] for p in seed_prompts]
 
 # assumes seed_prompts have already been truncated to approx max_prompt_tokens
@@ -70,9 +70,11 @@ def compute_fitness(image, rgb):
 def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for_crossover):
   random_candidate_prob = 0.05
   sd_inference_steps = 10        # 50 is default, reduced for quicker iteration
+  init_seed = 9999               # initial population can have a noticeable impact on performance,
+                                 # ..so use the same initial pop when comparing hyperparameters
 
   # Initialize population
-  pop = get_seed_prompts(pop_size)
+  pop = get_seed_prompts(pop_size, rng_seed=init_seed)
   img = [sd_generate(p, sd_inference_steps) for p in pop]
   fit = [fitness_fun(im) for im in img]
 
