@@ -184,14 +184,15 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
   graph.render(f"{name}_prompthist", format="pdf")
 
 # experiments
-pop_size = 10
-max_generations = 10
-num_parents_for_crossover = 4
+if __name__ == "__main__":
+  pop_size = 10
+  max_generations = 10
+  num_parents_for_crossover = 4
 
-for c in ("r", "g", "b"):
-  run_experiment(f"excess_{c}",
-                 lambda image: compute_fitness(image, c),
-                 pop_size,
-                 max_generations,
-                 num_parents_for_crossover)
+  for c in ("r", "g", "b"):
+    run_experiment(f"excess_{c}",
+                   lambda image: compute_fitness(image, c),
+                   pop_size,
+                   max_generations,
+                   num_parents_for_crossover)
 
