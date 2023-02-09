@@ -140,15 +140,14 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
         parents = random.sample(pop, num_parents_for_crossover)
         candidate = new_prompt(parents)
 
-      if candidate not in provenance:
-        provenance[candidate] = parents
-
       if (candidate not in off_pop) and (candidate not in pop):
         image = sd_generate(candidate, sd_inference_steps)
         fitness = fitness_fun(image)
         off_pop.append(candidate)
         off_img.append(image)
         off_fit.append(fitness)
+        if candidate not in provenance:
+          provenance[candidate] = parents
 
     merged_pop = off_pop + pop
     merged_img = off_img + img
