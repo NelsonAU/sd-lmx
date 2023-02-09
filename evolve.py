@@ -4,6 +4,8 @@
 
 import pandas as pd
 import numpy as np
+import pickle
+import os.path
 import torch
 import random
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
@@ -13,7 +15,7 @@ from tqdm.auto import tqdm
 import graphviz
 import textwrap
 
-llm = "EleutherAI/pythia-160m-deduped"
+llm = "EleutherAI/pythia-2.8b-deduped"
 sd_seed = 99 # make SD generate deterministically by using a fixed RNG seed
 
 # draw the initial population from a dataset of prompts from lexica.art:
@@ -73,20 +75,31 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
   init_seed = 9999               # initial population can have a noticeable impact on performance,
                                  # ..so use the same initial pop when comparing hyperparameters
 
-  # Initialize population
-  pop = get_seed_prompts(pop_size, rng_seed=init_seed)
+  # add more generations to an existing run if {name}_pop.pickle exists
+  restart = os.path.isfile(f"{name}_pop.pickle")
+  if restart:
+    with open(f"{name}_pop.pickle", "rb") as f:
+      pop = pickle.load(f)
+    with open(f"{name}_provenance.pickle", "rb") as f:
+      provenance = pickle.load(f)
+    results_df = pd.read_csv(f"{name}_results.csv")
+    max_fit_cand = results_df['best_prompt'].tolist()
+    max_fit_chart = results_df['max_fitness'].tolist()
+    avg_fit_chart = results_df['mean_fitness'].tolist()
+    med_fit_chart = results_df['median_fitness'].tolist()
+  # otherwise, initialize from the human prompts dataset
+  else:
+    pop = get_seed_prompts(pop_size, rng_seed=init_seed)
+    # dict mapping prompt -> [parent_prompts]
+    #  where a None value means the prompt is from the seed dataset, not LLM-generated
+    provenance = {p: None for p in pop}
+    med_fit_chart = []
+    avg_fit_chart = []
+    max_fit_chart = []
+    max_fit_cand = []
+
   img = [sd_generate(p, sd_inference_steps) for p in pop]
   fit = [fitness_fun(im) for im in img]
-
-  # Keep track of where all prompts seen so far came from
-  # dict mapping prompt -> [parent_prompts]
-  #  where a None value means the prompt is from the seed dataset, not LLM-generated
-  provenance = {p: None for p in pop}
-
-  med_fit_chart = []
-  avg_fit_chart = []
-  max_fit_chart = []
-  max_fit_cand = []
 
   for gen in tqdm(range(max_generations)):
     # Update stats
@@ -94,15 +107,17 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
     max_fit = max(fit)
     med_fit = np.median(fit)
 
-    avg_fit_chart.append(avg_fit)
-    max_fit_chart.append(max_fit)
-    med_fit_chart.append(med_fit)
-
     print('gen ', gen, len(pop))
     print('avg fit ', avg_fit, 'max fit', max_fit, 'med fit', med_fit)
     best_cand = pop[fit.index(max_fit)]
     print('best: ', best_cand)
-    max_fit_cand.append(best_cand)
+
+    # skip storing this the first iteration when restarting a run, to avoid duplicates
+    if not (restart and gen==0):
+      avg_fit_chart.append(avg_fit)
+      max_fit_chart.append(max_fit)
+      med_fit_chart.append(med_fit)
+      max_fit_cand.append(best_cand)
 
     # Update results file
     results_df = pd.DataFrame({
@@ -154,8 +169,37 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
     img = merged_img
     fit = merged_fit
 
+  # Update stats from the last iteration
+  # (this is copy/pasted from the beginning of the loop above... I know I know)
+  avg_fit = sum(fit) / pop_size
+  max_fit = max(fit)
+  med_fit = np.median(fit)
+
+  best_cand = pop[fit.index(max_fit)]
+
+  avg_fit_chart.append(avg_fit)
+  max_fit_chart.append(max_fit)
+  med_fit_chart.append(med_fit)
+  max_fit_cand.append(best_cand)
+
+  # Update results file
+  results_df = pd.DataFrame({
+      'best_prompt': max_fit_cand,
+      'max_fitness': max_fit_chart,
+      'mean_fitness': avg_fit_chart,
+      'median_fitness': med_fit_chart
+      })
+  results_df.to_csv(f"{name}_results.csv")
+
+  # save the best image
   best_idx = np.argmax(fit)
   img[best_idx].save(f"{name}_best.png")
+
+  # save the population and provenance in case we want to run more generations
+  with open(f"{name}_pop.pickle", "wb") as f:
+    pickle.dump(pop, f, pickle.HIGHEST_PROTOCOL)
+  with open(f"{name}_provenance.pickle", "wb") as f:
+    pickle.dump(provenance, f, pickle.HIGHEST_PROTOCOL)
 
   # draw a provenance graph
   wrapwidth = 25
