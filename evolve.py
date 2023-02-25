@@ -228,8 +228,8 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
 
 # experiments
 if __name__ == "__main__":
-  pop_size = 10
-  max_generations = 10
+  pop_size = 25
+  max_generations = 100
   num_parents_for_crossover = 4
 
   for c in ("r", "g", "b"):
