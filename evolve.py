@@ -2,6 +2,11 @@
 # Mark Nelson, 2022-2023
 # (main GA loop adapted from Elliot Meyerson)
 
+# Paper:
+#   Elliot Meyerson, Mark J. Nelson, Herbie Bradley, Arash Moradi, Amy K.
+#     Hoover, Joel Lehman (2023). Language Model Crossover: Variation Through
+#     Few-Shot Prompting. arXiv preprint. https://arxiv.org/abs/2302.12170
+
 import pandas as pd
 import numpy as np
 import pickle
