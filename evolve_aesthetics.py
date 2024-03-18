@@ -64,10 +64,13 @@ sd = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_d
 
 sd = sd.to("cuda")
 
-def sd_generate(prompt, num_inference_steps):
+batch_size = 5 # how many prompts to generate at a time, limited by GPU VRAM
+def sd_generate(prompts, num_inference_steps):
     torch.manual_seed(sd_seed)
-    image = sd(prompt=prompt, guidance_scale=0.0, num_inference_steps=num_inference_steps).images[0]
-    return image
+    images = []
+    for i in range(0, len(prompts), batch_size):
+        images += sd(prompt=prompts, guidance_scale=0.0, num_inference_steps=num_inference_steps).images
+    return images
 
 # fitness is evaluated by Kathrine Crowson's simulacra aesthetics model
 #     https://github.com/crowsonkb/simulacra-aesthetic-models
@@ -121,7 +124,7 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
     max_fit_chart = []
     max_fit_cand = []
 
-  img = [sd_generate(p, sd_inference_steps) for p in pop]
+  img = sd_generate(pop, sd_inference_steps)
   fit = [fitness_fun(im) for im in img]
 
   for gen in tqdm(range(max_generations)):
@@ -156,10 +159,8 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
         })
     results_df.to_csv(f"{name}_results.csv")
 
-    # Create offspring
+    # Create offspring prompts
     off_pop = []
-    off_img = []
-    off_fit = []
     while len(off_pop) < pop_size:
       if np.random.random() < random_candidate_prob:
         parents = None
@@ -169,13 +170,12 @@ def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for
         candidate = new_prompt(parents)
 
       if (candidate not in off_pop) and (candidate not in pop):
-        image = sd_generate(candidate, sd_inference_steps)
-        fitness = fitness_fun(image)
         off_pop.append(candidate)
-        off_img.append(image)
-        off_fit.append(fitness)
         if candidate not in provenance:
           provenance[candidate] = parents
+    # generate and score the new population
+    off_img = sd_generate(off_pop, sd_inference_steps)
+    off_fit = [fitness_fun(im) for im in off_img]
 
     merged_pop = off_pop + pop
     merged_img = off_img + img
