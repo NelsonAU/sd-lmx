@@ -1,5 +1,5 @@
 # Evolve stable diffusion prompts using language model crossover (LMX)
-# Mark Nelson, 2022-2023
+# Mark Nelson, 2022-2024
 # (main GA loop adapted from Elliot Meyerson)
 
 # Paper:
@@ -19,7 +19,7 @@ import clip
 from simulacra_fit_linear_model import AestheticMeanPredictionLinearModel
 import random
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from diffusers import StableDiffusionPipeline
+from diffusers import AutoPipelineForText2Image
 from PIL import Image
 from tqdm.auto import tqdm
 import graphviz
@@ -59,14 +59,14 @@ def new_prompt(seed_prompts, use_prefix=True):
   # return only the first line, without leading/trailing whitespace
   return output[0]['generated_text'].partition('\n')[0].strip()
 
-# initialize SD
-sd = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16)
+# initialize SDXL-Turbo
+sd = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
 
 sd = sd.to("cuda")
 
-def sd_generate(prompt, num_inference_steps=50):
+def sd_generate(prompt, num_inference_steps):
     torch.manual_seed(sd_seed)
-    image = sd(prompt, num_inference_steps=num_inference_steps).images[0]
+    image = sd(prompt=prompt, guidance_scale=0.0, num_inference_steps=num_inference_steps).images[0]
     return image
 
 # fitness is evaluated by Kathrine Crowson's simulacra aesthetics model
@@ -94,7 +94,7 @@ def compute_fitness(image):
 
 def run_experiment(name, fitness_fun, pop_size, max_generations, num_parents_for_crossover):
   random_candidate_prob = 0.05
-  sd_inference_steps = 10        # 50 is default, reduced for quicker iteration
+  sd_inference_steps = 1         # SDXL-Turbo does ok with 1
   init_seed = 9999               # initial population can have a noticeable impact on performance,
                                  # ..so use the same initial pop when comparing hyperparameters
 
