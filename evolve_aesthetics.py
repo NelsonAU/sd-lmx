@@ -69,7 +69,7 @@ def sd_generate(prompts, num_inference_steps):
     torch.manual_seed(sd_seed)
     images = []
     for i in range(0, len(prompts), batch_size):
-        images += sd(prompt=prompts, guidance_scale=0.0, num_inference_steps=num_inference_steps).images
+        images += sd(prompt=prompts[i:i+batch_size], guidance_scale=0.0, num_inference_steps=num_inference_steps).images
     return images
 
 # fitness is evaluated by Kathrine Crowson's simulacra aesthetics model
