@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import os.path
+import re
 import torch
 from torch.nn import functional as F
 from torchvision import transforms
@@ -25,6 +26,8 @@ from tqdm.auto import tqdm
 import graphviz
 import textwrap
 
+use_lmx = True # set to False to do 1-point string crossover instead, as a baseline
+
 llm = "EleutherAI/pythia-2.8b-deduped"
 sd_seed = 99 # make SD generate deterministically by using a fixed RNG seed
 
@@ -33,7 +36,8 @@ sd_seed = 99 # make SD generate deterministically by using a fixed RNG seed
 initprompts = pd.read_parquet("train.parquet")
 
 # initialize the LLM
-generator = pipeline(task="text-generation", model=llm, device=0)
+if use_lmx:
+  generator = pipeline(task="text-generation", model=llm, device=0)
 
 max_prompt_tokens = 75  # a token is roughly 4 chars; SD prompts can be up to 75-77 tokens
 
@@ -43,21 +47,28 @@ def get_seed_prompts(n, rng_seed=None):
 
 # assumes seed_prompts have already been truncated to approx max_prompt_tokens
 def new_prompt(seed_prompts, use_prefix=True):
-  if use_prefix:
-    seed_prompt = "\n\n".join(["Prompt: " + seed_prompt for seed_prompt in seed_prompts]) + "\n\nPrompt:"
+  if use_lmx:
+    if use_prefix:
+       seed_prompt = "\n\n".join(["Prompt: " + seed_prompt for seed_prompt in seed_prompts]) + "\n\nPrompt:"
+    else:
+      seed_prompt = "\n\n".join(seed_prompts) + "\n\n"
+
+    output = generator(
+      seed_prompt,
+      do_sample=True,
+      temperature=0.9,
+      max_new_tokens=max_prompt_tokens,
+      return_full_text=False
+    )
+    # return only the first line, without leading/trailing whitespace
+    return output[0]['generated_text'].partition('\n')[0].strip()
   else:
-    seed_prompt = "\n\n".join(seed_prompts) + "\n\n"
-
-  output = generator(
-    seed_prompt,
-    do_sample=True,
-    temperature=0.9,
-    max_new_tokens=max_prompt_tokens,
-    return_full_text=False
-  )
-
-  # return only the first line, without leading/trailing whitespace
-  return output[0]['generated_text'].partition('\n')[0].strip()
+    # baseline: 1-point string crossover, splitting on comma/space
+    # non-LMX baseline always uses two parents, ignoring seed_prompts past the first two
+    parent1 = re.split('( |, |,)', seed_prompts[0])
+    parent2 = re.split('( |, |,)', seed_prompts[1])
+    xover = random.randrange(len(parent1))
+    return ''.join(parent1[:xover]) + ''.join(parent2[xover:])
 
 # initialize SDXL-Turbo
 sd = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16")
